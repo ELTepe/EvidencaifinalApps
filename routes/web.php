@@ -10,8 +10,6 @@ Route::get('/', [RecipeController::class, 'index'])->name('home');
 
 Route::get('/dashboard', [RecipeController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
-Route::resource('recipes', RecipeController::class)->only(['index', 'show']);
-
 Route::middleware('auth')->group(function () {
     Route::resource('recipes', RecipeController::class)->except(['index', 'show']);
     Route::post('recipes/{recipe}/comments', [CommentController::class, 'store'])->name('recipes.comments.store');
@@ -21,6 +19,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
+
+Route::resource('recipes', RecipeController::class)->only(['index', 'show']);
 
 Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::resource('categories', CategoryController::class)->except(['show']);

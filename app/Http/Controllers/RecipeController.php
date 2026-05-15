@@ -42,7 +42,9 @@ class RecipeController extends Controller
     {
         $data = $this->validatedRecipe($request);
 
-        DB::transaction(function () use ($data, $request) {
+        $recipe = null;
+
+        DB::transaction(function () use ($data, $request, &$recipe) {
             $recipeData = collect($data)->except('ingredients')->all();
             $recipe = Recipe::create([
                 ...$recipeData,
@@ -54,7 +56,7 @@ class RecipeController extends Controller
             $this->syncIngredients($recipe, $data['ingredients'] ?? []);
         });
 
-        return redirect()->route('recipes.index')->with('status', 'Receta publicada correctamente.');
+        return redirect()->route('recipes.show', $recipe)->with('status', 'Receta publicada correctamente.');
     }
 
     /**
@@ -118,7 +120,7 @@ class RecipeController extends Controller
 
     private function validatedRecipe(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'category_id' => ['required', 'exists:categories,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string', 'min:20'],
@@ -128,9 +130,37 @@ class RecipeController extends Controller
             'servings' => ['required', 'integer', 'min:1', 'max:50'],
             'difficulty' => ['required', 'in:facil,media,dificil'],
             'ingredients' => ['required', 'array', 'min:1'],
-            'ingredients.*.name' => ['required', 'string', 'max:120'],
-            'ingredients.*.quantity' => ['required', 'string', 'max:120'],
+            'ingredients.*.name' => ['nullable', 'string', 'max:120'],
+            'ingredients.*.quantity' => ['nullable', 'string', 'max:120'],
         ]);
+
+        $ingredients = collect($data['ingredients'] ?? [])
+            ->map(fn (array $ingredient) => [
+                'name' => trim($ingredient['name'] ?? ''),
+                'quantity' => trim($ingredient['quantity'] ?? ''),
+            ]);
+
+        $hasPartialIngredient = $ingredients
+            ->contains(fn (array $ingredient) => filled($ingredient['name']) xor filled($ingredient['quantity']));
+
+        if ($hasPartialIngredient) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'ingredients' => ['Cada ingrediente debe incluir nombre y cantidad.'],
+            ]);
+        }
+
+        $ingredients = $ingredients
+            ->filter(fn (array $ingredient) => filled($ingredient['name']) && filled($ingredient['quantity']))
+            ->values()
+            ->all();
+
+        if (empty($ingredients)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'ingredients' => ['Debes agregar al menos un ingrediente con nombre y cantidad.'],
+            ]);
+        }
+
+        return array_merge($data, ['ingredients' => $ingredients]);
     }
 
     private function syncIngredients(Recipe $recipe, array $ingredients): void
